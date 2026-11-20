@@ -25,8 +25,7 @@ v0.1 in progress. See the milestone roadmap in `docs/roadmap.md`
 
 ## Environment
 
-Tested on Lubuntu with Mesa llvmpipe (software GL). wgpu's GL backend
-is enabled via the `gles` feature. Expect playable (30–60 fps) — not
+Tested on Lubuntu with Mesa llvmpipe (software GL). wgpu’s GL backend is enabled by default on Linux and is used as a fallback when Vulkan isn’t available.. Expect playable (30–60 fps) — not
 fast — performance for 2D content.
 
 ## Determinism
@@ -34,3 +33,17 @@ fast — performance for 2D content.
 Deterministic **on the same machine and toolchain**: fixed timestep,
 no wall-clock leaks into simulation. Cross-platform bit-exact
 determinism is not guaranteed (floating point may differ across CPUs).
+
+## Choosing the wgpu backend
+
+By default, all wgpu backends are enabled. On Linux this means Vulkan
+is preferred and GL/GLES is the fallback. To force a specific backend
+(useful on machines without a real GPU):
+
+    WGPU_BACKEND=gl cargo run -p topdown-demo
+
+Other values: `vulkan`, `metal`, `dx12`, `dx11`, `webgpu`. Combine with
+commas for a priority list, e.g. `WGPU_BACKEND=vulkan,gl`. The engine
+logs which adapter and backend it actually selected at `INFO` level
+during startup — check that line first if a window opens but stays
+black.

@@ -48,7 +48,7 @@ engine-render   = { path = "crates/engine-render" }
 engine-platform = { path = "crates/engine-platform" }
 engine-assets   = { path = "crates/engine-assets" }
 engine-audio    = { path = "crates/engine-audio" }
-engine          = { path = "crates/engine" }        # <-- add this line
+engine          = { path = "crates/engine" }
 
 # Optimize deps fully in dev; keep our own code cheap to recompile.
 [profile.dev]

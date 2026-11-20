@@ -26,27 +26,15 @@ struct Slot {
     value: Option<Node>,
 }
 
-/// On-the-wire representation: only the slot list. The free list and
-/// despawn queue are derived / transient.
+/// On-the-wire representation used only during deserialization.
+///
+/// Persists the free list so that `pop()` returns the same index on a
+/// freshly loaded scene as it would on the scene that was saved. The
+/// despawn queue is not persisted (it's transient, drained each frame).
 #[derive(Deserialize)]
 struct SceneRaw {
     slots: Vec<Slot>,
-}
-
-impl From<SceneRaw> for Scene {
-    fn from(raw: SceneRaw) -> Self {
-        let mut free = Vec::new();
-        for (i, slot) in raw.slots.iter().enumerate() {
-            if slot.value.is_none() {
-                free.push(i as u32);
-            }
-        }
-        Scene {
-            slots: raw.slots,
-            free,
-            despawned: Vec::new(),
-        }
-    }
+    free: Vec<u32>,
 }
 
 /// The scene: an arena of nodes forming a parent/child hierarchy.
@@ -74,16 +62,159 @@ impl From<SceneRaw> for Scene {
 /// queue. Drain it with [`take_despawned`](Self::take_despawned) and
 /// prune any game-owned side tables in the same frame. If you don't
 /// drain it, the queue grows unboundedly.
+///
+/// ## Determinism across save/load
+///
+/// The free list is **persisted**. If you save a scene, load it, and
+/// then spawn a node, the new `NodeId` will match what would have been
+/// produced had you never saved. This keeps game-owned side tables
+/// (which deserialize alongside the scene) stable across reload cycles.
+///
+/// ## Validation on load
+///
+/// [`Scene::try_from`] validates every structural invariant — dangling
+/// parent/child links, mismatched bidirectional links, duplicate
+/// children, out-of-range or inconsistent free indices, and hierarchy
+/// cycles are all rejected. Hand-edited RON files fail loudly instead
+/// of producing an unusable scene.
 #[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(from = "SceneRaw")]
+#[serde(try_from = "SceneRaw")]
 pub struct Scene {
     slots: Vec<Slot>,
     /// Indices into `slots` currently free for reuse (LIFO).
-    #[serde(skip)]
+    ///
+    /// Persisted: preserves the exact reuse order across save/load.
     free: Vec<u32>,
-    /// `NodeId`s removed since the last `take_despawned`.
+    /// `NodeId`s removed since the last `take_despawned`. Transient.
     #[serde(skip)]
     despawned: Vec<NodeId>,
+}
+
+impl TryFrom<SceneRaw> for Scene {
+    type Error = SceneError;
+
+    fn try_from(raw: SceneRaw) -> Result<Self, Self::Error> {
+        let slot_count = raw.slots.len();
+
+        // 1. Free-list structural validation.
+        let mut seen_free = vec![false; slot_count];
+        for &idx in &raw.free {
+            let i = idx as usize;
+            if i >= slot_count {
+                return Err(SceneError::FreeIndexOutOfRange { index: idx });
+            }
+            if seen_free[i] {
+                return Err(SceneError::DuplicateFreeIndex { index: idx });
+            }
+            seen_free[i] = true;
+            if raw.slots[i].value.is_some() {
+                return Err(SceneError::FreeSlotOccupied { index: idx });
+            }
+        }
+        for (i, slot) in raw.slots.iter().enumerate() {
+            if slot.value.is_none() && !seen_free[i] {
+                return Err(SceneError::LeakedEmptySlot { index: i as u32 });
+            }
+        }
+
+        // 2. Build the scene (needed for cross-slot lookups below).
+        let scene = Scene {
+            slots: raw.slots,
+            free: raw.free,
+            despawned: Vec::new(),
+        };
+
+        // 3. Bidirectional parent/child consistency for every live node.
+        for (i, slot) in scene.slots.iter().enumerate() {
+            let Some(node) = &slot.value else { continue };
+            let this_id = NodeId {
+                index: i as u32,
+                generation: slot.generation,
+            };
+
+            // Parent link must point at a live node that lists us back.
+            if let Some(p) = node.parent {
+                let parent_node = scene
+                    .slots
+                    .get(p.index as usize)
+                    .filter(|s| s.generation == p.generation)
+                    .and_then(|s| s.value.as_ref())
+                    .ok_or(SceneError::DanglingParent {
+                        child: this_id,
+                        parent: p,
+                    })?;
+                if !parent_node.children.contains(&this_id) {
+                    return Err(SceneError::ParentChildMismatch {
+                        child: this_id,
+                        parent: p,
+                    });
+                }
+            }
+
+            // Every listed child must be live and point back at us.
+            let mut seen_children: Vec<NodeId> = Vec::with_capacity(node.children.len());
+            for &c in &node.children {
+                if seen_children.contains(&c) {
+                    return Err(SceneError::DuplicateChild {
+                        parent: this_id,
+                        child: c,
+                    });
+                }
+                seen_children.push(c);
+                let child_node = scene
+                    .slots
+                    .get(c.index as usize)
+                    .filter(|s| s.generation == c.generation)
+                    .and_then(|s| s.value.as_ref())
+                    .ok_or(SceneError::DanglingChild {
+                        parent: this_id,
+                        child: c,
+                    })?;
+                if child_node.parent != Some(this_id) {
+                    return Err(SceneError::ChildParentMismatch {
+                        parent: this_id,
+                        child: c,
+                    });
+                }
+            }
+        }
+
+        // 4. Cycle detection. The bidirectional check above catches
+        //    self-references but not longer cycles (A↔B, A→B→C→A).
+        //    A chain cannot exceed `slot_count` edges without revisiting,
+        //    so a step counter suffices — no allocation per node.
+        let max_steps = slot_count as u32;
+        for start in 0..slot_count {
+            if scene.slots[start].value.is_none() {
+                continue;
+            }
+            let mut cur = Some(start as u32);
+            let mut steps = 0u32;
+            while let Some(i) = cur {
+                let node = match &scene.slots[i as usize].value {
+                    Some(n) => n,
+                    None => break,
+                };
+                match node.parent {
+                    None => break,
+                    Some(p) => {
+                        steps += 1;
+                        if steps > max_steps {
+                            return Err(SceneError::HierarchyCycle {
+                                node: NodeId {
+                                    index: start as u32,
+                                    generation: scene.slots[start].generation,
+                                },
+                            });
+                        }
+                        cur = Some(p.index);
+                    }
+                }
+            }
+        }
+
+        Ok(scene)
+    }
 }
 
 impl Scene {
@@ -197,6 +328,22 @@ impl Scene {
         Ok(())
     }
 
+        /// Set the node's local transform **and** its interpolation snapshot
+    /// simultaneously, so the next draw has no glide.
+    ///
+    /// Use this for spawn, respawn, screen-warp, and any "this should
+    /// look like it jumped" event. Use [`set_local_transform`] for the
+    /// normal "I want to see a smooth transition" case — which is what
+    /// most game logic should do.
+    ///
+    /// [`set_local_transform`]: Self::set_local_transform
+    pub fn teleport(&mut self, id: NodeId, transform: Transform2D) -> Result<(), SceneError> {
+        let node = self.node_mut(id)?;
+        node.local = transform;
+        node.prev_local = transform;
+        Ok(())
+    }
+
     // -------- hierarchy -------------------------------------------------
 
     /// Parent of `id`, if any.
@@ -219,12 +366,9 @@ impl Scene {
         if parent == child {
             return Err(SceneError::SelfParent);
         }
-        // Validate both.
         self.node(parent)?;
         self.node(child)?;
 
-        // Cycle check: walk up from `parent`; if we hit `child`, the
-        // proposed parent is a descendant of the node we'd re-parent.
         let mut cur = Some(parent);
         while let Some(id) = cur {
             if id == child {
@@ -233,13 +377,20 @@ impl Scene {
             cur = self.node(id)?.parent;
         }
 
-        // Detach from old parent.
         if let Some(old) = self.node(child)?.parent {
             self.node_mut(old)?.children.retain(|&c| c != child);
         }
 
-        // Attach.
-        self.node_mut(child)?.parent = Some(parent);
+        // Attach, and reset the child's interpolation snapshot so its
+        // own local contribution doesn't glide across the reparent. The
+        // world transform will still change because the parent chain
+        // changed — that jump is inherent to reparenting and is what the
+        // game asked for.
+        {
+            let child_node = self.node_mut(child)?;
+            child_node.parent = Some(parent);
+            child_node.prev_local = child_node.local;
+        }
         self.node_mut(parent)?.children.push(child);
         Ok(())
     }
@@ -315,12 +466,10 @@ impl Scene {
     pub fn despawn(&mut self, id: NodeId) -> Result<(), SceneError> {
         self.node(id)?;
 
-        // Collect the subtree while every slot is still valid.
         let mut to_remove: Vec<NodeId> = Vec::new();
         self.collect_subtree_preorder(id, &mut to_remove);
 
         for nid in to_remove {
-            // Detach from parent (no-op if the parent was already freed).
             if let Ok(node) = self.node(nid) {
                 if let Some(parent) = node.parent {
                     if let Ok(pn) = self.node_mut(parent) {
@@ -328,7 +477,6 @@ impl Scene {
                     }
                 }
             }
-            // Free the slot: bump generation, push to free list.
             if let Some(slot) = self.slots.get_mut(nid.index as usize) {
                 slot.value = None;
                 slot.generation = slot.generation.wrapping_add(1);
@@ -360,6 +508,8 @@ mod tests {
     use super::*;
     use glam::Vec2;
 
+    // ---- basic arena / hierarchy ----------------------------------------
+
     #[test]
     fn spawn_assigns_distinct_ids() {
         let mut s = Scene::new();
@@ -378,7 +528,6 @@ mod tests {
         let b = s.spawn("b");
         assert_eq!(b.index(), a.index());
         assert_eq!(b.generation(), a.generation() + 1);
-        // Old handle is stale.
         assert!(!s.contains(a));
         assert!(s.contains(b));
     }
@@ -425,7 +574,6 @@ mod tests {
         let c = s.spawn("c");
         s.add_child(a, b).unwrap();
         s.add_child(b, c).unwrap();
-        // c is a descendant of a; parenting a under c would cycle.
         assert!(matches!(
             s.add_child(c, a),
             Err(SceneError::WouldCreateCycle { .. })
@@ -466,7 +614,6 @@ mod tests {
         assert_eq!(s.node_count(), 0);
         let drained = s.take_despawned();
         assert_eq!(drained, vec![root, c1, gc, c2]);
-        // Second drain is empty.
         assert!(s.take_despawned().is_empty());
     }
 
@@ -474,12 +621,9 @@ mod tests {
     fn snapshot_freezes_prev_state() {
         let mut s = Scene::new();
         let n = s.spawn_with("n", Transform2D::from_translation(Vec2::ZERO));
-
         s.snapshot_transforms();
         s.set_local_transform(n, Transform2D::from_translation(Vec2::new(10.0, 0.0)))
             .unwrap();
-
-        // Midway interpolation should be at (5, 0).
         let mid = s
             .interpolated_world_transform(n, 0.5)
             .unwrap()
@@ -487,13 +631,14 @@ mod tests {
         assert!((mid.x - 5.0).abs() < 1e-5);
     }
 
+    // ---- round-trip with free list preserved ----------------------------
+
     #[test]
     fn ron_roundtrip_preserves_ids_and_hierarchy() {
         let mut s = Scene::new();
         let p = s.spawn_with("p", Transform2D::from_translation(Vec2::new(1.0, 2.0)));
         let c = s.spawn_with("c", Transform2D::from_translation(Vec2::new(3.0, 4.0)));
         s.add_child(p, c).unwrap();
-        // Free one slot so the free list is non-trivial on re-load.
         let tmp = s.spawn("tmp");
         s.despawn(tmp).unwrap();
         let _ = s.take_despawned();
@@ -506,10 +651,261 @@ mod tests {
         assert_eq!(s2.children(p).unwrap(), &[c]);
         assert_eq!(s2.name(p).unwrap(), "p");
         assert_eq!(s2.name(c).unwrap(), "c");
-        // Same NodeIds work on the deserialized scene.
         let w = s2.world_transform(c).unwrap();
         let origin = w.transform_point2(Vec2::ZERO);
         assert!((origin.x - 4.0).abs() < 1e-5);
         assert!((origin.y - 6.0).abs() < 1e-5);
+    }
+
+    /// The user-requested determinism test: after save + load, the *next
+    /// spawn* must produce the same `NodeId` as it would have on the
+    /// unsaved scene.
+    #[test]
+    fn save_load_then_spawn_matches_unsaved() {
+        let mut s = Scene::new();
+        let a = s.spawn("a");
+        let _b = s.spawn("b");
+        s.despawn(a).unwrap();
+        let _ = s.take_despawned();
+
+        let text = ron::to_string(&s).unwrap();
+        let mut s2: Scene = ron::from_str(&text).unwrap();
+
+        let from_unsaved = s.spawn("new");
+        let from_loaded = s2.spawn("new");
+
+        assert_eq!(from_unsaved, from_loaded);
+        assert_eq!(from_unsaved.index(), a.index());
+        assert_eq!(from_unsaved.generation(), a.generation() + 1);
+    }
+
+    /// Multi-slot reuse ordering must survive the round-trip, not just
+    /// the first pop.
+    #[test]
+    fn save_load_preserves_multi_free_order() {
+        let mut s = Scene::new();
+        let a = s.spawn("a"); // index 0
+        let _b = s.spawn("b"); // index 1
+        let c = s.spawn("c"); // index 2
+        let d = s.spawn("d"); // index 3
+        s.despawn(a).unwrap(); // free = [0]
+        s.despawn(c).unwrap(); // free = [0, 2]
+        s.despawn(d).unwrap(); // free = [0, 2, 3]
+        let _ = s.take_despawned();
+
+        let text = ron::to_string(&s).unwrap();
+        let mut s2: Scene = ron::from_str(&text).unwrap();
+
+        // LIFO: next reuse is 3, then 2, then 0 — on both scenes.
+        let a1 = s.spawn("n1");
+        let a2 = s.spawn("n2");
+        let a3 = s.spawn("n3");
+        let b1 = s2.spawn("n1");
+        let b2 = s2.spawn("n2");
+        let b3 = s2.spawn("n3");
+
+        assert_eq!(a1.index(), 3);
+        assert_eq!(a2.index(), 2);
+        assert_eq!(a3.index(), 0);
+        assert_eq!(a1, b1);
+        assert_eq!(a2, b2);
+        assert_eq!(a3, b3);
+    }
+
+    // ---- deserialization validation ------------------------------------
+
+    fn make_node(
+        name: &str,
+        parent: Option<NodeId>,
+        children: Vec<NodeId>,
+    ) -> Node {
+        Node {
+            name: name.to_string(),
+            parent,
+            children,
+            local: Transform2D::IDENTITY,
+            prev_local: Transform2D::IDENTITY,
+        }
+    }
+
+    #[test]
+    fn reject_free_index_out_of_range() {
+        let raw = SceneRaw {
+            slots: vec![],
+            free: vec![7],
+        };
+        assert!(matches!(
+            Scene::try_from(raw),
+            Err(SceneError::FreeIndexOutOfRange { index: 7 })
+        ));
+    }
+
+    #[test]
+    fn reject_duplicate_free_index() {
+        let raw = SceneRaw {
+            slots: vec![
+                Slot { generation: 0, value: None },
+                Slot { generation: 0, value: None },
+            ],
+            free: vec![0, 0, 1],
+        };
+        assert!(matches!(
+            Scene::try_from(raw),
+            Err(SceneError::DuplicateFreeIndex { index: 0 })
+        ));
+    }
+
+    #[test]
+    fn reject_free_slot_occupied() {
+        let raw = SceneRaw {
+            slots: vec![Slot {
+                generation: 0,
+                value: Some(make_node("a", None, vec![])),
+            }],
+            free: vec![0],
+        };
+        assert!(matches!(
+            Scene::try_from(raw),
+            Err(SceneError::FreeSlotOccupied { index: 0 })
+        ));
+    }
+
+    #[test]
+    fn reject_leaked_empty_slot() {
+        let raw = SceneRaw {
+            slots: vec![Slot { generation: 0, value: None }],
+            free: vec![],
+        };
+        assert!(matches!(
+            Scene::try_from(raw),
+            Err(SceneError::LeakedEmptySlot { index: 0 })
+        ));
+    }
+
+    #[test]
+    fn reject_dangling_parent() {
+        let bogus = NodeId { index: 9, generation: 0 };
+        let raw = SceneRaw {
+            slots: vec![Slot {
+                generation: 0,
+                value: Some(make_node("a", Some(bogus), vec![])),
+            }],
+            free: vec![],
+        };
+        assert!(matches!(
+            Scene::try_from(raw),
+            Err(SceneError::DanglingParent { .. })
+        ));
+    }
+
+    #[test]
+    fn reject_dangling_child() {
+        let bogus = NodeId { index: 9, generation: 0 };
+        let raw = SceneRaw {
+            slots: vec![Slot {
+                generation: 0,
+                value: Some(make_node("a", None, vec![bogus])),
+            }],
+            free: vec![],
+        };
+        assert!(matches!(
+            Scene::try_from(raw),
+            Err(SceneError::DanglingChild { .. })
+        ));
+    }
+
+    #[test]
+    fn reject_parent_child_mismatch() {
+        // a.parent = b, but b does not list a as a child.
+        let id_b = NodeId { index: 1, generation: 0 };
+        let raw = SceneRaw {
+            slots: vec![
+                Slot {
+                    generation: 0,
+                    value: Some(make_node("a", Some(id_b), vec![])),
+                },
+                Slot {
+                    generation: 0,
+                    value: Some(make_node("b", None, vec![])),
+                },
+            ],
+            free: vec![],
+        };
+        assert!(matches!(
+            Scene::try_from(raw),
+            Err(SceneError::ParentChildMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn reject_child_parent_mismatch() {
+        // a.children = [b], but b.parent != a.
+        let id_b = NodeId { index: 1, generation: 0 };
+        let raw = SceneRaw {
+            slots: vec![
+                Slot {
+                    generation: 0,
+                    value: Some(make_node("a", None, vec![id_b])),
+                },
+                Slot {
+                    generation: 0,
+                    // b claims no parent, but a lists it as a child.
+                    value: Some(make_node("b", None, vec![])),
+                },
+            ],
+            free: vec![],
+        };
+        assert!(matches!(
+            Scene::try_from(raw),
+            Err(SceneError::ChildParentMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn reject_duplicate_child() {
+        let id_a = NodeId { index: 0, generation: 0 };
+        let id_b = NodeId { index: 1, generation: 0 };
+        let raw = SceneRaw {
+            slots: vec![
+                Slot {
+                    generation: 0,
+                    value: Some(make_node("a", None, vec![id_b, id_b])),
+                },
+                Slot {
+                    generation: 0,
+                    value: Some(make_node("b", Some(id_a), vec![])),
+                },
+            ],
+            free: vec![],
+        };
+        assert!(matches!(
+            Scene::try_from(raw),
+            Err(SceneError::DuplicateChild { .. })
+        ));
+    }
+
+    #[test]
+    fn reject_hierarchy_cycle() {
+        // A↔B bidirectional cycle: passes the "consistent back-links"
+        // check but must fail cycle detection.
+        let id_a = NodeId { index: 0, generation: 0 };
+        let id_b = NodeId { index: 1, generation: 0 };
+        let raw = SceneRaw {
+            slots: vec![
+                Slot {
+                    generation: 0,
+                    value: Some(make_node("a", Some(id_b), vec![id_b])),
+                },
+                Slot {
+                    generation: 0,
+                    value: Some(make_node("b", Some(id_a), vec![id_a])),
+                },
+            ],
+            free: vec![],
+        };
+        assert!(matches!(
+            Scene::try_from(raw),
+            Err(SceneError::HierarchyCycle { .. })
+        ));
     }
 }

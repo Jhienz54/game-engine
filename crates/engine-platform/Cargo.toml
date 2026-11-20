@@ -9,3 +9,5 @@ license.workspace = true
 engine-core = { workspace = true }
 log = { workspace = true }
 winit = { workspace = true }
+thiserror = { workspace = true }
+glam = { workspace = true } 

@@ -12,3 +12,5 @@ wgpu = { workspace = true }
 bytemuck = { workspace = true }
 pollster = { workspace = true }
 glam = { workspace = true }
+thiserror = { workspace = true }
+winit = { workspace = true }

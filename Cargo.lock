@@ -486,7 +486,9 @@ name = "engine-platform"
 version = "0.1.0"
 dependencies = [
  "engine-core",
+ "glam",
  "log",
+ "thiserror 2.0.21",
  "winit",
 ]
 
@@ -499,7 +501,9 @@ dependencies = [
  "glam",
  "log",
  "pollster",
+ "thiserror 2.0.21",
  "wgpu",
+ "winit",
 ]
 
 [[package]]

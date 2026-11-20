@@ -13,8 +13,7 @@
 //!
 //! - `BTreeMap<NodeId, T>` — ordered iteration.
 //! - `Vec<Option<T>>` indexed by `NodeId::index()`, with a
-//!   `generation` check on access to reject stale IDs. Fastest; `NodeId`
-//!   exposes `index()` and `generation()` for exactly this.
+//!   `generation` check on access to reject stale IDs.
 //!
 //! Cross-platform bit-exact determinism is **not** promised — float
 //! math may differ across CPUs.
@@ -23,11 +22,13 @@
 #![warn(missing_docs)]
 
 mod error;
+mod input;
 mod node_id;
 mod scene;
 mod transform;
 
 pub use error::SceneError;
+pub use input::{InputState, KeyCode, MouseButton};
 pub use node_id::NodeId;
 pub use scene::Scene;
 pub use transform::Transform2D;
