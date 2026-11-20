@@ -1,0 +1,16 @@
+[package]
+name = "engine-assets"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+engine-core = { workspace = true }
+log = { workspace = true }
+image = { workspace = true }
+serde = { workspace = true }
+ron = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
