@@ -449,6 +449,7 @@ dependencies = [
  "engine-core",
  "engine-platform",
  "engine-render",
+ "glam",
  "log",
 ]
 
@@ -498,6 +499,7 @@ name = "engine-render"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "engine-assets",
  "engine-core",
  "glam",
  "log",

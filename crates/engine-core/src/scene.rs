@@ -505,7 +505,12 @@ impl Scene {
         std::mem::take(&mut self.despawned)
     }
 
-        /// Set or clear the sprite on a node.
+    /// The sprite attached to a node, if any.
+    pub fn sprite(&self, id: NodeId) -> Result<Option<&crate::Sprite>, SceneError> {
+        Ok(self.node(id)?.sprite.as_ref())
+    }
+
+    /// Set or clear the sprite on a node.
     pub fn set_sprite(&mut self, id: NodeId, sprite: Option<crate::Sprite>) -> Result<(), SceneError> {
         self.node_mut(id)?.sprite = sprite;
         Ok(())

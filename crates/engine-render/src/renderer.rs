@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use engine_core::{Camera2D, FilterMode, ImageAsset, SpriteInstance, TextureHandle};
+use engine_assets::ImageAsset;
+use engine_core::{Camera2D, FilterMode, SpriteInstance, TextureHandle};
 use winit::window::Window;
 
 use crate::RendererError;

@@ -15,8 +15,8 @@ struct Demo {
 }
 
 fn make_f_texture() -> ImageAsset {
-    let size = 16;
-    let mut pixels = vec![0; size * size * 4];
+    let size: u32 = 16;
+    let mut pixels = vec![0u8; (size * size * 4) as usize];
     let mut set = |x: u32, y: u32, c: [u8; 4]| {
         let i = ((y * size + x) * 4) as usize;
         pixels[i..i+4].copy_from_slice(&c);
@@ -100,6 +100,6 @@ impl PlatformApp for Demo {
 }
 
 fn main() {
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     run(Demo::new()).expect("run");
 }

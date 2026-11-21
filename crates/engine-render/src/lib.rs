@@ -41,4 +41,5 @@ mod sprite_pipeline;
 
 pub use error::RendererError;
 pub use renderer::Renderer;
-pub use sprite_pipeline::{SpritePipeline, SpriteInstance};
+pub use engine_core::SpriteInstance;
+pub use sprite_pipeline::SpritePipeline;

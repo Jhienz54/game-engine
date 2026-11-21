@@ -80,7 +80,7 @@ impl SpritePipeline {
             label: Some("sprite pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                module: &shader, entry_point: "vs_main",
+                module: &shader, entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
@@ -93,7 +93,7 @@ impl SpritePipeline {
                 }],
             },
             fragment: Some(wgpu::FragmentState {
-                module: &shader, entry_point: "fs_main",
+                module: &shader, entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL,

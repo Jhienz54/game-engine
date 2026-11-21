@@ -12,3 +12,4 @@ engine-platform = { workspace = true }
 engine-assets = { workspace = true }
 engine-audio = { workspace = true }
 log = { workspace = true }
+glam = { workspace = true }
