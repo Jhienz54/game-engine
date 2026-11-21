@@ -1,5 +1,5 @@
 [package]
-name = "topdown-demo"
+name = "fear-cards"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

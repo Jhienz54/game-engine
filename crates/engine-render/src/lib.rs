@@ -37,6 +37,8 @@
 
 mod error;
 mod renderer;
+mod sprite_pipeline;
 
 pub use error::RendererError;
 pub use renderer::Renderer;
+pub use sprite_pipeline::{SpritePipeline, SpriteInstance};

@@ -17,7 +17,7 @@ v0.1 in progress. See the milestone roadmap in `docs/roadmap.md`
 - `crates/engine-assets` — file I/O + image decoding.
 - `crates/engine-audio` — audio interface (stub in v0.1).
 - `crates/engine` — facade crate. Games depend on this one.
-- `examples/topdown-demo` — playable demo.
+- `games/fear-cards` — playable demo.
 
 ## Running the demo
 
@@ -25,8 +25,14 @@ v0.1 in progress. See the milestone roadmap in `docs/roadmap.md`
 
 ## Environment
 
-Tested on Lubuntu with Mesa llvmpipe (software GL). wgpu’s GL backend is enabled by default on Linux and is used as a fallback when Vulkan isn’t available.. Expect playable (30–60 fps) — not
-fast — performance for 2D content.
+Tested on Lubuntu with Mesa lavapipe (software Vulkan). Expect
+playable (30–60 fps) — not fast — performance for 2D content.
+
+**Use Vulkan, not GL.** GL + EGL fails with `EGL_BAD_CONFIG` on
+this machine (and many Mesa setups); Vulkan lavapipe works reliably.
+If you don't have Vulkan drivers installed:
+
+    sudo apt install mesa-vulkan-drivers vulkan-tools
 
 ## Determinism
 
@@ -37,13 +43,14 @@ determinism is not guaranteed (floating point may differ across CPUs).
 ## Choosing the wgpu backend
 
 By default, all wgpu backends are enabled. On Linux this means Vulkan
-is preferred and GL/GLES is the fallback. To force a specific backend
-(useful on machines without a real GPU):
+is preferred; GL/GLES is the fallback.
 
-    WGPU_BACKEND=gl cargo run -p topdown-demo
+On machines without a real GPU, **force Vulkan** so wgpu doesn't
+waste time probing the broken GL path:
 
-Other values: `vulkan`, `metal`, `dx12`, `dx11`, `webgpu`. Combine with
-commas for a priority list, e.g. `WGPU_BACKEND=vulkan,gl`. The engine
-logs which adapter and backend it actually selected at `INFO` level
-during startup — check that line first if a window opens but stays
-black.
+    WGPU_BACKEND=vulkan cargo run -p fear-cards
+
+Combine with commas for a priority list, e.g. `WGPU_BACKEND=vulkan,gl`.
+The engine logs which adapter and backend it actually selected at `INFO`
+level during startup — check the `wgpu adapter:` line first if a window
+opens but stays black.

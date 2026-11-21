@@ -4,8 +4,8 @@ use engine_core::InputState;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, EventLoop};
-use winit::keyboard::{Key, NamedKey, PhysicalKey};
+use winit::event_loop::{self, ActiveEventLoop, EventLoop};
+use winit::keyboard::PhysicalKey;
 use winit::window::{Window, WindowId};
 
 use crate::clock::{Clock, DEFAULT_FIXED_HZ};
@@ -41,6 +41,17 @@ pub trait PlatformApp {
     /// Variable-rate draw. `alpha ∈ [0, 1)` is the interpolation factor
     /// through the current fixed step.
     fn redraw(&mut self, alpha: f32);
+
+    /// Return `true` to exit the event loop. Checked after every frame's
+    /// fixed steps and before the final `redraw`. Default is `false`.
+    ///
+    /// The engine deliberately does not special-case any key: a game that
+    /// wants Escape-to-quit sets this flag in `fixed_update` after
+    /// checking `input.key_pressed(KeyCode::Escape)`. This keeps quit
+    /// policy in the game layer, where record/replay can capture it.
+    fn should_exit(&self) -> bool {
+        false
+    }
 }
 
 struct Wrapper<A: PlatformApp> {
@@ -85,12 +96,6 @@ impl<A: PlatformApp> ApplicationHandler for Wrapper<A> {
                 return;
             }
             WindowEvent::KeyboardInput { event: ke, .. } => {
-                if ke.state == ElementState::Pressed
-                    && matches!(ke.logical_key, Key::Named(NamedKey::Escape))
-                {
-                    event_loop.exit();
-                    return;
-                }
                 if let PhysicalKey::Code(code) = ke.physical_key {
                     self.pending.key_event(code, ke.state, ke.repeat);
                 }
@@ -116,7 +121,7 @@ impl<A: PlatformApp> ApplicationHandler for Wrapper<A> {
         self.app.window_event(event, &window);
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         self.clock.begin_frame();
 
         // Run fixed steps. Each step gets a fresh `InputState` snapshot;
@@ -126,8 +131,12 @@ impl<A: PlatformApp> ApplicationHandler for Wrapper<A> {
             self.app.fixed_update(self.clock.fixed_dt(), &input);
         }
 
-        self.last_alpha = self.clock.alpha();
+        if self.app.should_exit() {
+            event_loop.exit();
+            return;
+        }
 
+        self.last_alpha = self.clock.alpha();
         if let Some(w) = &self.window {
             w.request_redraw();
         }

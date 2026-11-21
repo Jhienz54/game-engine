@@ -462,6 +462,7 @@ dependencies = [
  "ron",
  "serde",
  "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -558,6 +559,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
 dependencies = [
  "simd-adler32",
+]
+
+[[package]]
+name = "fear-cards"
+version = "0.1.0"
+dependencies = [
+ "engine",
+ "env_logger",
+ "log",
 ]
 
 [[package]]
@@ -2090,15 +2100,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
 dependencies = [
  "winnow",
-]
-
-[[package]]
-name = "topdown-demo"
-version = "0.1.0"
-dependencies = [
- "engine",
- "env_logger",
- "log",
 ]
 
 [[package]]

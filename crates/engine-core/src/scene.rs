@@ -16,6 +16,8 @@ struct Node {
     /// Set equal to `local` on spawn so newly spawned nodes don't
     /// interpolate from an arbitrary origin.
     prev_local: Transform2D,
+    #[serde(default)]
+    pub sprite: Option<crate::Sprite>,
 }
 
 /// One arena slot. `value: None` means the slot is free; `generation`
@@ -238,6 +240,7 @@ impl Scene {
             children: Vec::new(),
             local: transform,
             prev_local: transform,
+            sprite: None,
         };
         self.insert_slot(node)
     }
@@ -328,7 +331,7 @@ impl Scene {
         Ok(())
     }
 
-        /// Set the node's local transform **and** its interpolation snapshot
+    /// Set the node's local transform **and** its interpolation snapshot
     /// simultaneously, so the next draw has no glide.
     ///
     /// Use this for spawn, respawn, screen-warp, and any "this should
@@ -500,6 +503,36 @@ impl Scene {
     /// and use the returned IDs to prune any game-owned side tables.
     pub fn take_despawned(&mut self) -> Vec<NodeId> {
         std::mem::take(&mut self.despawned)
+    }
+
+        /// Set or clear the sprite on a node.
+    pub fn set_sprite(&mut self, id: NodeId, sprite: Option<crate::Sprite>) -> Result<(), SceneError> {
+        self.node_mut(id)?.sprite = sprite;
+        Ok(())
+    }
+
+    /// Walk the scene, interpolate transforms, and collect all sprites.
+    /// Sorted by Z-index (lower draws first), then by NodeId for determinism.
+    pub fn collect_sprites(&self, alpha: f32) -> Vec<crate::SpriteInstance> {
+        let mut out = Vec::new();
+        for (i, slot) in self.slots.iter().enumerate() {
+            let Some(node) = &slot.value else { continue };
+            let Some(sprite) = &node.sprite else { continue };
+            
+            let id = NodeId { index: i as u32, generation: slot.generation };
+            if let Ok(mat) = self.interpolated_world_transform(id, alpha) {
+                out.push(crate::SpriteInstance {
+                    transform: mat,
+                    size: sprite.size,
+                    z_index: sprite.z_index,
+                    color: sprite.color,
+                    texture: sprite.texture,
+                });
+            }
+        }
+        // Stable sort by Z, then by implicit NodeId order (due to Vec iteration).
+        out.sort_by_key(|s| s.z_index);
+        out
     }
 }
 
@@ -725,6 +758,7 @@ mod tests {
             children,
             local: Transform2D::IDENTITY,
             prev_local: Transform2D::IDENTITY,
+            sprite: None,
         }
     }
 
@@ -907,5 +941,28 @@ mod tests {
             Scene::try_from(raw),
             Err(SceneError::HierarchyCycle { .. })
         ));
+    }
+
+        #[test]
+    fn ron_loads_scene_without_sprite_field() {
+        // Simulate an old scene file that didn't know about the `sprite` field.
+        let old_ron = r#"
+            (
+                slots: [
+                    (generation: 0, value: Some((
+                        name: "old_node",
+                        parent: None,
+                        children: [],
+                        local: (translation: (0.0, 0.0), rotation: 0.0, scale: (1.0, 1.0)),
+                        prev_local: (translation: (0.0, 0.0), rotation: 0.0, scale: (1.0, 1.0))
+                    )))
+                ],
+                free: []
+            )
+        "#;
+        let scene: Scene = ron::from_str(old_ron).unwrap();
+        let id = NodeId { index: 0, generation: 0 };
+        assert!(scene.contains(id));
+        assert!(scene.sprite(id).unwrap().is_none());
     }
 }

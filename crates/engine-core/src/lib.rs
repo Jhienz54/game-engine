@@ -26,12 +26,18 @@ mod input;
 mod node_id;
 mod scene;
 mod transform;
+mod texture;
+mod camera;
+mod sprite;
 
 pub use error::SceneError;
 pub use input::{InputState, KeyCode, MouseButton};
 pub use node_id::NodeId;
 pub use scene::Scene;
 pub use transform::Transform2D;
+pub use texture::{FilterMode, TextureHandle, TextureMeta};
+pub use camera::Camera2D;
+pub use sprite::{Sprite, SpriteInstance};
 
 /// Engine version string, useful for logs and error reports.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

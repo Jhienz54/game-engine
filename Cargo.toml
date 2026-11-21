@@ -7,7 +7,7 @@ members = [
     "crates/engine-assets",
     "crates/engine-audio",
     "crates/engine",
-    "examples/topdown-demo",
+    "games/fear-cards",
 ]
 
 [workspace.package]

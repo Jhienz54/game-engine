@@ -122,3 +122,18 @@ fn map_keycode(k: WKeyCode) -> Option<KeyCode> {
         _ => return None,
     })
 }
+
+fn map_mouse_button(b: WMButton) -> Option<MouseButton> {
+    use MouseButton as M;
+    use WMButton as W;
+    Some(match b {
+        W::Left => M::Left,
+        W::Right => M::Right,
+        W::Middle => M::Middle,
+        W::Back => M::Back,
+        W::Forward => M::Forward,
+        // Core deliberately has no catch-all; unknown buttons are ignored
+        // the same way unknown keys are.
+        W::Other(_) => return None,
+    })
+}

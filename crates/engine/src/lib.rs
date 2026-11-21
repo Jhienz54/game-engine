@@ -19,8 +19,13 @@ pub use engine_assets as assets;
 pub use engine_audio as audio;
 
 // Top-level re-exports for the parts games actually touch.
-pub use engine_core::{NodeId, Scene, SceneError, Transform2D, VERSION};
+pub use engine_core::{
+    FilterMode, InputState, KeyCode, MouseButton, NodeId, Scene, TextureHandle,
+    TextureMeta, Transform2D, VERSION,
+};
 
 pub use engine_platform::{run, PlatformApp, PlatformError, Window, WindowEvent};
 
 pub use engine_render::{Renderer, RendererError};
+
+pub use engine_assets::{AssetCache, ImageAsset, AssetError};

@@ -15,7 +15,7 @@ work goes into a new milestone rather than renumbering.
 | M6 | Sprites + camera + upload path | Batched 2D sprite pipeline, `Camera2D`, layer/z sort, `upload_texture(handle, decoded)`, interpolation alpha threaded through `draw()` |
 | M7 | Debug draw + bitmap text + overlay | Line/rect/circle primitives, embedded 8×8 bitmap font, FPS/draw-call/entity overlay toggled F1 |
 | M8 | Game loop integration | `Game` trait, `engine::run`, documented lifecycle order, interpolation plumbed end-to-end |
-| M9 | Topdown demo | Zelda-style player, AABB collision resolution, spawning pickups, collision overlay (F2) |
+| - | *(M9 - retired)* | Its role is now `games/fear-cards` (introduced at M4). A small top-down game may return later as the engine's genericity proof. |
 | M10 | Audio stub | `AudioBackend` trait, no-op impl |
 
 ## Post-v0.1 (not scheduled)
