@@ -15,3 +15,4 @@ pollster = { workspace = true }
 glam = { workspace = true }
 thiserror = { workspace = true }
 winit = { workspace = true }
+cosmic-text = { version = "0.19.0", default-features = false, features = ["std", "swash"] }

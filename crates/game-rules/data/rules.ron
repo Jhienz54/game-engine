@@ -1,0 +1,7 @@
+// Tuning numbers for the Anxiety Clock. Edit and re-run: no recompiling of rules logic needed.
+(
+    hand_size: 4,
+    turn_anxiety: 4,
+    max_anxiety: 100,
+    win_target: 58,
+)

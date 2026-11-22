@@ -21,6 +21,8 @@ pub struct Sprite {
 pub struct SpriteInstance {
     pub transform: Mat3,
     pub size: Vec2,
+    /// UV rect [min_u, min_v, max_u, max_v]. Regular sprites: [0,0,1,1].
+    pub uv: [f32; 4],
     pub z_index: i32,
     pub color: [f32; 4],
     pub texture: TextureHandle,

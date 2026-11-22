@@ -1,0 +1,18 @@
+(
+    seed: 3,
+    actions: [
+        PlayCard(
+            hand_index: 0,
+        ),
+        PlayCard(
+            hand_index: 1,
+        ),
+        EndTurn,
+        PlayCard(
+            hand_index: 0,
+        ),
+        PlayCard(
+            hand_index: 0,
+        ),
+    ],
+)

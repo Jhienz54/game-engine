@@ -2,11 +2,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use engine_assets::ImageAsset;
-use engine_core::{Camera2D, FilterMode, SpriteInstance, TextureHandle};
+use engine_core::{Camera2D, FilterMode, SpriteInstance, TextInstance, TextureHandle, TextureMeta};
 use winit::window::Window;
 
 use crate::RendererError;
 use crate::sprite_pipeline::SpritePipeline;
+use crate::text::TextRenderer;
+
+/// Reserved handle for the glyph atlas texture. Real assets use small sequential
+/// handles (0, 1, 2...), so this can never collide with them.
+const ATLAS_HANDLE: TextureHandle = TextureHandle::from_raw(u32::MAX);
 
 struct GpuTexture {
     _texture: wgpu::Texture,
@@ -23,6 +28,7 @@ pub struct Renderer {
     
     sprite_pipeline: SpritePipeline,
     textures: HashMap<TextureHandle, GpuTexture>,
+    text_renderer: TextRenderer,
 }
 
 impl Renderer {
@@ -59,12 +65,15 @@ impl Renderer {
         surface.configure(&device, &config);
 
         let sprite_pipeline = SpritePipeline::new(&device, format);
+        // Bundled font only: we never scan system fonts, so text looks the same everywhere.
+        let text_renderer = TextRenderer::new(include_bytes!("../../../assets/fonts/default.ttf").to_vec());
 
         Ok(Self {
             instance, surface, device, queue, config,
             clear_color: wgpu::Color { r: 0.1, g: 0.1, b: 0.16, a: 1.0 },
             sprite_pipeline,
             textures: HashMap::new(),
+            text_renderer,
         })
     }
 
@@ -102,7 +111,28 @@ impl Renderer {
         self.textures.insert(handle, GpuTexture { _texture: texture, bind_group });
     }
 
-    pub fn render(&mut self, camera: &Camera2D, sprites: &[SpriteInstance]) -> Result<(), RendererError> {
+    /// Measure text with the bundled font: returns (width, height) in pixels.
+    pub fn measure_text(&mut self, text: &str, size: f32, max_width: f32) -> (f32, f32) {
+        self.text_renderer.measure(text, size, max_width)
+    }
+
+    pub fn render(&mut self, camera: &Camera2D, sprites: &[SpriteInstance], texts: &[TextInstance]) -> Result<(), RendererError> {
+        // 1. Turn text into glyph quads. If new glyphs were rasterized, re-upload the atlas.
+        //    (The first call always uploads it, so no special setup is needed in `new`.)
+        let (glyph_sprites, atlas_update) = self.text_renderer.layout(texts, ATLAS_HANDLE);
+        if let Some((pixels, width, height)) = atlas_update {
+            let asset = ImageAsset {
+                meta: TextureMeta { width, height, filter: FilterMode::Nearest, label: "glyph_atlas".into() },
+                pixels,
+            };
+            self.upload_texture(ATLAS_HANDLE, &asset);
+        }
+        // 2. Sprites and glyphs share one draw list, sorted by z.
+        let mut all: Vec<SpriteInstance> = sprites.to_vec();
+        all.extend(glyph_sprites);
+        all.sort_by_key(|s| s.z_index);
+        let sprites: &[SpriteInstance] = &all;
+
         let frame = match self.surface.get_current_texture() {
             Ok(f) => f,
             Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {

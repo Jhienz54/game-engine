@@ -21,7 +21,8 @@ pub use engine_audio as audio;
 // Top-level re-exports for the parts games actually touch.
 pub use engine_core::{
     Camera2D, FilterMode, InputState, KeyCode, MouseButton, NodeId, Scene, Sprite,
-    SpriteInstance, TextureHandle, TextureMeta, Transform2D, VERSION,
+    SpriteInstance, Text, TextAlign, TextInstance, TextureHandle, TextureMeta, Transform2D,
+    VERSION,
 };
 
 pub use glam;

@@ -171,10 +171,10 @@ impl SpritePipeline {
             let br = sprite.transform.transform_point2(glam::Vec2::new(hw, hh));
             let bl = sprite.transform.transform_point2(glam::vec2(-hw, hh));
 
-            vertices.push(Vertex { pos: [tl.x, tl.y], uv: [0.0, 0.0], color: sprite.color });
-            vertices.push(Vertex { pos: [tr.x, tr.y], uv: [1.0, 0.0], color: sprite.color });
-            vertices.push(Vertex { pos: [br.x, br.y], uv: [1.0, 1.0], color: sprite.color });
-            vertices.push(Vertex { pos: [bl.x, bl.y], uv: [0.0, 1.0], color: sprite.color });
+            vertices.push(Vertex { pos: [tl.x, tl.y], uv: [sprite.uv[0], sprite.uv[1]], color: sprite.color });
+            vertices.push(Vertex { pos: [tr.x, tr.y], uv: [sprite.uv[2], sprite.uv[1]], color: sprite.color });
+            vertices.push(Vertex { pos: [br.x, br.y], uv: [sprite.uv[2], sprite.uv[3]], color: sprite.color });
+            vertices.push(Vertex { pos: [bl.x, bl.y], uv: [sprite.uv[0], sprite.uv[3]], color: sprite.color });
 
             indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
         }

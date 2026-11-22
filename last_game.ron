@@ -1,0 +1,50 @@
+(
+    seed: 1,
+    actions: [
+        PlayCard(
+            hand_index: 2,
+        ),
+        PlayCard(
+            hand_index: 0,
+        ),
+        PlayCard(
+            hand_index: 1,
+        ),
+        EndTurn,
+        PlayCard(
+            hand_index: 3,
+        ),
+        PlayCard(
+            hand_index: 2,
+        ),
+        EndTurn,
+        PlayCard(
+            hand_index: 3,
+        ),
+        PlayCard(
+            hand_index: 1,
+        ),
+        EndTurn,
+        PlayCard(
+            hand_index: 2,
+        ),
+        PlayCard(
+            hand_index: 0,
+        ),
+        EndTurn,
+        PlayCard(
+            hand_index: 0,
+        ),
+        EndTurn,
+        PlayCard(
+            hand_index: 2,
+        ),
+        PlayCard(
+            hand_index: 2,
+        ),
+        EndTurn,
+        PlayCard(
+            hand_index: 3,
+        ),
+    ],
+)

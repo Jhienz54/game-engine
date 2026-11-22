@@ -38,6 +38,8 @@
 mod error;
 mod renderer;
 mod sprite_pipeline;
+mod text;
+pub use text::TextRenderer;
 
 pub use error::RendererError;
 pub use renderer::Renderer;

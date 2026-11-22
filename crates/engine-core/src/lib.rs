@@ -29,6 +29,7 @@ mod transform;
 mod texture;
 mod camera;
 mod sprite;
+mod text;
 
 pub use error::SceneError;
 pub use input::{InputState, KeyCode, MouseButton};
@@ -37,6 +38,7 @@ pub use scene::Scene;
 pub use transform::Transform2D;
 pub use texture::{FilterMode, TextureHandle, TextureMeta};
 pub use camera::Camera2D;
+pub use text::{Text, TextAlign, TextInstance};
 pub use sprite::{Sprite, SpriteInstance};
 
 /// Engine version string, useful for logs and error reports.

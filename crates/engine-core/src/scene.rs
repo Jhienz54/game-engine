@@ -18,6 +18,8 @@ struct Node {
     prev_local: Transform2D,
     #[serde(default)]
     pub sprite: Option<crate::Sprite>,
+    #[serde(default)]
+    pub text: Option<crate::Text>,
 }
 
 /// One arena slot. `value: None` means the slot is free; `generation`
@@ -241,6 +243,7 @@ impl Scene {
             local: transform,
             prev_local: transform,
             sprite: None,
+            text: None,
         };
         self.insert_slot(node)
     }
@@ -518,6 +521,31 @@ impl Scene {
 
     /// Walk the scene, interpolate transforms, and collect all sprites.
     /// Sorted by Z-index (lower draws first), then by NodeId for determinism.
+    /// The text attached to a node, if any.
+    pub fn text(&self, id: NodeId) -> Result<Option<&crate::Text>, SceneError> {
+        Ok(self.node(id)?.text.as_ref())
+    }
+
+    /// Set or clear the text on a node.
+    pub fn set_text(&mut self, id: NodeId, text: Option<crate::Text>) -> Result<(), SceneError> {
+        self.node_mut(id)?.text = text;
+        Ok(())
+    }
+
+    /// Walk the scene, interpolate transforms, and collect all text instances.
+    pub fn collect_text_instances(&self, alpha: f32) -> Vec<crate::TextInstance> {
+        let mut out = Vec::new();
+        for (i, slot) in self.slots.iter().enumerate() {
+            let Some(node) = &slot.value else { continue };
+            let Some(text) = &node.text else { continue };
+            let id = NodeId { index: i as u32, generation: slot.generation };
+            if let Ok(mat) = self.interpolated_world_transform(id, alpha) {
+                out.push(crate::TextInstance { transform: mat, text: text.clone() });
+            }
+        }
+        out
+    }
+
     pub fn collect_sprites(&self, alpha: f32) -> Vec<crate::SpriteInstance> {
         let mut out = Vec::new();
         for (i, slot) in self.slots.iter().enumerate() {
@@ -529,6 +557,7 @@ impl Scene {
                 out.push(crate::SpriteInstance {
                     transform: mat,
                     size: sprite.size,
+                    uv: [0.0, 0.0, 1.0, 1.0],
                     z_index: sprite.z_index,
                     color: sprite.color,
                     texture: sprite.texture,
@@ -764,6 +793,7 @@ mod tests {
             local: Transform2D::IDENTITY,
             prev_local: Transform2D::IDENTITY,
             sprite: None,
+            text: None,
         }
     }
 
@@ -969,5 +999,29 @@ mod tests {
         let id = NodeId { index: 0, generation: 0 };
         assert!(scene.contains(id));
         assert!(scene.sprite(id).unwrap().is_none());
+    }
+
+    #[test]
+    fn ron_roundtrip_with_text() {
+        let mut s = Scene::new();
+        let n = s.spawn("text_node");
+        s.set_text(
+            n,
+            Some(crate::Text {
+                content: "Thalassophobia".into(),
+                size: 32.0,
+                color: [1.0, 1.0, 1.0, 1.0],
+                max_width: Some(400.0),
+                align: crate::TextAlign::Center,
+                z_index: 10,
+            }),
+        )
+        .unwrap();
+        let text = ron::to_string(&s).unwrap();
+        let s2: Scene = ron::from_str(&text).unwrap();
+        let loaded = s2.text(n).unwrap().unwrap();
+        assert_eq!(loaded.content, "Thalassophobia");
+        assert_eq!(loaded.max_width, Some(400.0));
+        assert_eq!(loaded.align, crate::TextAlign::Center);
     }
 }

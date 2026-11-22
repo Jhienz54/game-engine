@@ -8,6 +8,7 @@ members = [
     "crates/engine-audio",
     "crates/engine",
     "games/fear-cards",
+    "crates/game-rules",
 ]
 
 [workspace.package]
